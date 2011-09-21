@@ -1,0 +1,27 @@
+---
+name: Net-Daylife
+version: 1.0
+author:
+  - 'Aaron Straup Cope E<lt>ascope@cpan.orgE<gt>'
+abstract: OOP for the Daylife.com API
+license: perl
+resources:
+  license: http://dev.perl.org/licenses/
+requires:
+  Config::Simple: 0
+  Digest::MD5: 0
+  HTTP::Request: 0
+  LWP::UserAgent: 0
+  Log::Dispatch: '>= 2.10'
+  URI: 0
+build_requires:
+  Test::Simple: '>= 0.47'
+  XML::XPath: '>= 1.13'
+provides:
+  Net::Daylife:
+    file: lib/Net/Daylife.pm
+    version: 1.0
+generated_by: Module::Build version 0.2808
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.2.html
+  version: 1.2

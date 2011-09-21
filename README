@@ -1,0 +1,192 @@
+NAME
+    Net::Daylife - OOP for the Daylife.com API
+
+SYNOPSIS
+     use Getopt::Std;
+     use Net::Daylife;
+
+     my %opts = ();
+     getopts('c:', \%opts);
+
+     my $day = Net::Daylife->new('config' => $opts{'c'});
+
+     my $res = $day->api_call('search_getRelatedArticles', {'query' => 'flickr'});
+
+     foreach my $a ($res->findnodes("/response/payload/article")){
+            print $a->findvalue("headline") . "\n";
+     }
+
+DESCRIPTION
+    Net::Daylife is an OOP wrapper for the Daylife.com API.
+
+    Rather than try to mirror the API itself with individual object methods
+    it exposes one principle method called...you guessed it, *api_call* that
+    accepts an API method name and its arguments as a hash reference.
+
+    API results are returned in a format specific handler. For example, XML
+    responses are returned as *XML::XPath* objects, JSON responses as
+    *JSON::Any* objects and so on.
+
+    Currently only HTTP level errors are handled. API specific errors are
+    left to the developer. At some point I may add format specific packages
+    (Net::Daylife::XML, etc.) at which point it will make more sense to
+    check response codes automagically.
+
+OPTIONS
+    Options are passed to Net::Daylife using a Config::Simple object or a
+    valid Config::Simple config file. Options are grouped by "block".
+
+  daypi
+
+    * access_key
+        String. *required*
+
+        Your Daylife API access key.
+
+    * shared_secret
+        String. *required*
+
+        Your Daylife API shared secret.
+
+    * format
+        String.
+
+        Return API results in a specific format. Valid options are :
+
+        * xml
+            API results will be parsed with and returned as a *XML::XPath*
+            object.
+
+        * json
+            API results will be parsed with and returned as a *JSON::Any*
+            object.
+
+        * php
+            API results will be parsed with *PHP::Serialization* (or
+            unserialize as the case may be) and returned as a hash.
+
+            Why would you want to do this when you can just use JSON? That's
+            your business, really...
+
+        The default is xml
+
+    *B <host>
+        String.
+
+        Which Daylife API server to talk to.
+
+        The default is freeapi.daylife.com
+
+    * version
+        String.
+
+        Which version of the Daylife API to use.
+
+        The default is 4.2
+
+LOGGING AND REPORTING
+    Logging is handled by an internal *Log::Dispatch* method and errors are
+    written to STDERR. There is a *log* object method for accessing the
+    dispatch handler directly.
+
+PACKAGE METHODS
+  __PACKAGE__->new(%options)
+
+    *Net::Daylife* subclasses *LWP::UserAgent*. In addition its parent
+    class' arguments you must include the following :
+
+    * config
+        Either a valid *Config::Simple* object or the path to a file that
+        can be parsed by *Config::Simple*.
+
+    Returns a *Net::Daylife* object!
+
+OBJECT METHODS YOU SHOULD CARE ABOUT
+  $obj->api_call($method, \%args)
+
+    Execute an API call for the method called *$method*, passing *%args* as
+    the ...well, arguments.
+
+    On success returns a format-specific object handler. On failure, returns
+    false.
+
+OBJECT METHODS YOU MAY CARE ABOUT
+  $obj->execute_request($method, \%args)
+
+    Execute an API call for the method called *$method*, passing *%args* as
+    the ...well, arguments.
+
+    On success returns an *HTTP::Response* handler. On failure, returns
+    false.
+
+  $obj->sign_args(\%args)
+
+    Sign the arguments for an API call with the object's Daylife API shared
+    secret.
+
+    Returns a sting.
+
+  $obj->parse_response(HTTP::Response)
+
+    Helper method to juggle and hand off an API response to the correct
+    format handler.
+
+    Returns either an object or false.
+
+  $obj->parse_response_xml(HTTP::Response)
+
+    Parse an API response in to an *XML::XPath* object.
+
+    Returns false, otherwise.
+
+  $obj->parse_response_json(HTTP::Response)
+
+    Parse an API response in to an *JSON::Any* object.
+
+    Returns false, otherwise.
+
+  $obj->parse_response_php(HTTP::Response)
+
+    Parse an API response in to a hash using *PHP::Serialization*.
+
+    Returns false, otherwise.
+
+  $obj->divine_option($option, $default)
+
+    Wrapper method check for configs that may be (re) set by a user.
+
+    Returns a string.
+
+  $obj->log()
+
+    Access to the object's internal *Log::Dispatch* object.
+
+  $obj->cfg()
+
+    Access to the object's internal *Config::Simple* object.
+
+VERSION
+    1.0
+
+DATE
+    $Date: 2008/04/19 18:39:41 $
+
+AUTHOR
+    Aaron Straup Cope <ascope@cpan.org>
+
+SEE ALSO
+    http://www.daylife.com/
+
+    http://developer.daylife.com/
+
+BUGS
+    Sure, why not.
+
+    Please report all bugs via http://rt.cpan.org
+
+LICENSE
+    Copyright (c) 2008 Aaron Straup Cope. All Rights Reserved.
+
+    This is free software. You may redistribute it and/or modify it under
+    the same terms as Perl itself.
+
