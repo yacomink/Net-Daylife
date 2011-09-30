@@ -34,7 +34,7 @@ one principle method called...you guessed it, I<api_call> that accepts an API
 method name and its arguments as a hash reference.
 
 API results are returned in a format specific handler. For example, XML responses
-are returned as I<XML::XPath> objects, JSON responses as I<JSON::Any> objects and
+are returned as I<XML::XPath> objects, JSON responses as I<JSON::XS> objects and
 so on.
 
 Currently only HTTP level errors are handled. API specific errors are left to the
@@ -76,7 +76,7 @@ API results will be parsed with and returned as a I<XML::XPath> object.
 
 =item * B<json>
 
-API results will be parsed with and returned as a I<JSON::Any> object.
+API results will be parsed with and returned as a I<JSON::XS> object.
 
 =item * B<php>
 
@@ -116,13 +116,17 @@ handler directly.
 =cut
 
 use strict;
+use warnings;
 
 use URI;
-use Digest::MD5 qw (md5_hex);
 use HTTP::Request;
+use Digest::MD5 qw (md5_hex);
 
 use Log::Dispatch;
 use Log::Dispatch::Screen;
+
+my %id_params = ( "topic_id" => 1, "quote_id" => 1, "image_id" => 1, "article_id" => 1, "source_id" => 1 );
+my %name_params = ( "query" => 1, "name" => 1, "url" => 1, "content" => 1 );
 
 =head1 PACKAGE METHODS
 
@@ -146,52 +150,62 @@ Returns a I<Net::Daylife> object!
 
 =cut
 
+my $defaults = {
+	"host"    => "freeapi.daylife.com",
+	"version" => "4.2",
+	"format"  => "xml"
+};
+
 sub new {
-        my $pkg = shift;
-        my %opts = @_;
 
-        my $self = $pkg->SUPER::new(%opts);
+	my $pkg  = shift;
+	my %opts = @_;
 
-        if (! $self){
-                warn "Unable to instantiate parent class, $!";
-                return undef;
-        }
+	my $self = $pkg->SUPER::new(%opts);
 
-        my $cfg = $opts{'config'};
-        $self->{'cfg'} = (UNIVERSAL::isa($cfg, "Config::Simple")) ? $cfg : Config::Simple->new($cfg);
+	if ( !$self ) {
+		warn "Unable to instantiate parent class, $!";
+		return undef;
+	}
 
-        # 
+	$self->{'cfg'} = $opts{'config'};
 
-        my $log_fmt = sub {
-                my %args = @_;
-                
-                my $msg = $args{'message'};
-                chomp $msg;
-                
-                if ($args{'level'} eq "error") {
-                        
-                        my ($ln, $sub) = (caller(4))[2,3];
-                        $sub =~ s/.*:://;
-                        
-                        return sprintf("[%s][%s, ln%d] %s\n",
-                                       $args{'level'}, $sub, $ln, $msg);
-                }
-                
-                return sprintf("[%s] %s\n", $args{'level'}, $msg);
-        };
-        
-        my $logger = Log::Dispatch->new(callbacks => $log_fmt);
-        my $error  = Log::Dispatch::Screen->new(name      => '__error',
-                                                min_level => 'error',
-                                                stderr    => 1);
-        
-        $logger->add($error);
-        $self->{'log'} = $logger;
+	# set defaults
+	for ( keys %$defaults ) {
+		$self->{'cfg'}->{$_} = $defaults->{$_} unless defined( $self->{'cfg'}->{$_} );
+	}
 
-        # 
+	my $log_fmt = sub {
+		my %args = @_;
 
-        bless $self, $pkg;
-        return $self;
+		my $msg = $args{'message'};
+		chomp $msg;
+
+		if ( $args{'level'} eq "error" ) {
+
+			my ( $ln, $sub ) = ( caller(4) )[ 2, 3 ];
+			$sub =~ s/.*:://;
+
+			return sprintf( "[%s][%s, ln%d] %s\n", $args{'level'}, $sub, $ln, $msg );
+		}
+
+		return sprintf( "[%s] %s\n", $args{'level'}, $msg );
+	};
+
+	my $logger = Log::Dispatch->new( callbacks => $log_fmt );
+	my $error = Log::Dispatch::Screen->new(
+		name      => '__error',
+		min_level => 'error',
+		stderr    => 1
+	);
+
+	$logger->add($error);
+	$self->{'log'} = $logger;
+
+	#
+
+	bless $self, $pkg;
+	return $self;
 }
 
 =head1 OBJECT METHODS YOU SHOULD CARE ABOUT
@@ -207,18 +221,18 @@ On success returns a format-specific object handler. On failure, returns false.
 =cut
 
 sub api_call {
-        my $self = shift;
-        my $method = shift;
-        my $args = shift;
+	my $self   = shift;
+	my $method = shift;
+	my $args   = shift;
 
-        my $res = $self->execute_request($method, $args);
+	my $res = $self->execute_request( $method, $args );
 
-        if (! $res->is_success()){
-                $self->log()->error("API request failed with HTTP error " . $res->code() . " : " . $res->message());
-                return 0;
-        }
+	if ( !$res->is_success() ) {
+		$self->log()->error( "API request failed with HTTP error " . $res->code() . " : " . $res->message() );
+		return 0;
+	}
 
-        return $self->parse_response($res);
+	return $self->parse_response($res);
 }
 
 =head1 OBJECT METHODS YOU MAY CARE ABOUT
@@ -234,32 +248,32 @@ On success returns an I<HTTP::Response> handler. On failure, returns false.
 =cut
 
 sub execute_request {
-        my $self = shift;
-        my $method = shift;
-        my $args = shift;
+	my $self   = shift;
+	my $method = shift;
+	my $args   = shift;
 
-        my $sig = $self->sign_args($args);
+	my $sig = $self->sign_args($args);
 
-        $args->{'signature'} = $sig;
-        $args->{'accesskey'} = $self->{'cfg'}->param("daypi.access_key");
-        
-        my $host = $self->divine_option("daypi.host", "freeapi.daylife.com");
-        my $version = $self->divine_option("daypi.version", "4.2");
-        my $format = $self->divine_option("daypi.format", "xml");
-        
-        my $endpoint = sprintf("/%srest/publicapi/%s/%s", $format, $version, $method);
+	$args->{'signature'} = $sig;
+	$args->{'accesskey'} = $self->{'cfg'}->{access_key};
 
-        my $url = URI->new("http://" . $host);
-        $url->path($endpoint);
-        $url->query_form($args);
+	my $host    = $self->{'cfg'}->{host};
+	my $version = $self->{'cfg'}->{version};
+	my $format  = $self->{'cfg'}->{format};
 
-        $self->log()->info($url->as_string());
+	my $endpoint = sprintf( "/%srest/publicapi/%s/%s", $format, $version, $method );
 
-        my $req = HTTP::Request->new('GET' => $url->as_string());
-        my $res = $self->request($req);
+	my $url = URI->new( "http://" . $host );
+	$url->path($endpoint);
+	$url->query_form($args);
 
-        $self->log()->debug($res->as_string());
-        return $res;
+	$self->log()->info( $url->as_string() );
+
+	my $req = HTTP::Request->new( 'GET' => $url->as_string() );
+	my $res = $self->request($req);
+
+	$self->log()->debug( $res->as_string() );
+	return $res;
 }
 
 =head2 $obj->sign_args(\%args)
@@ -271,16 +285,24 @@ Returns a sting.
 =cut
 
 sub sign_args {
-        my $self = shift;
-        my $args = shift;
+	my ( $self, $args ) = @_;
+	my @ret = ();
 
-        my $str_query = join("", sort {$a cmp $b} values %$args);
+	my @core_data = grep { ( $id_params{$_} || $name_params{$_} ) } keys %$args;
 
-        my $raw = $self->{'cfg'}->param("daypi.access_key");
-        $raw .= $self->{'cfg'}->param("daypi.shared_secret");
-        $raw .= $str_query;
+	if (@core_data) {
 
-        return md5_hex($raw);
+		my $k = $core_data[0];
+		my $v = $args->{$k};
+
+		my $to_encode = $v;
+		if ( ref $to_encode && ref $to_encode eq 'ARRAY' ) {
+			$to_encode = join( '', @$to_encode );
+		}
+
+		return md5_hex( $self->{'cfg'}->{access_key} . $self->{'cfg'}->{shared_secret} . $to_encode );
+	}
+
 }
 
 =head2 $obj->parse_response(HTTP::Response)
@@ -293,18 +315,18 @@ Returns either an object or false.
 =cut
 
 sub parse_response {
-        my $self = shift;
-        my $res = shift;
+	my $self = shift;
+	my $res  = shift;
 
-        my $format = $self->divine_option("daypi.format", "xml");
-        my $method = "parse_response_" . $format;
+	my $format = $self->{'cfg'}->{format};
+	my $method = "parse_response_" . $format;
 
-        if (! $self->can($method)){
-                $self->log()->error("'$format' is an unknown or unsupported response format");
-                return 0;
-        }
+	if ( !$self->can($method) ) {
+		$self->log()->error("'$format' is an unknown or unsupported response format");
+		return 0;
+	}
 
-        return $self->$method($res);
+	return $self->$method($res);
 }
 
 =head2 $obj->parse_response_xml(HTTP::Response)
@@ -316,50 +338,50 @@ Returns false, otherwise.
 =cut
 
 sub parse_response_xml {
-        my $self = shift;
-        my $res = shift;
-        
-        my $xml = undef;
+	my $self = shift;
+	my $res  = shift;
 
-        eval {
-                require XML::XPath;
-                $xml = XML::XPath->new('xml' => $res->content());
-        };
+	my $xml = undef;
 
-        if ($@){
-                $self->log()->error("Failed to parse XML response : $@");
-                return 0;
-        }
+	eval {
+		require XML::XPath;
+		$xml = XML::XPath->new( 'xml' => $res->content() );
+	};
 
-        return $xml;
+	if ($@) {
+		$self->log()->error("Failed to parse XML response : $@");
+		return 0;
+	}
+
+	return $xml;
 }
 
 =head2 $obj->parse_response_json(HTTP::Response)
 
-Parse an API response in to an I<JSON::Any> object.
+Parse an API response in to an I<JSON::XS> object.
 
 Returns false, otherwise.
 
 =cut
 
 sub parse_response_json {
-        my $self = shift;
-        my $res = shift;
+	my $self = shift;
+	my $res  = shift;
 
-        my $json = undef;
+	my $json = undef;
 
-        eval {
-                require JSON::Any;
-                $json = JSON::Any->new();
-                $json = $json->jsonToObj($res->content());
-        };
+	eval {
+		require JSON::XS;
+		$json = JSON::XS->new();
+		$json = $json->decode( $res->content() );
+	};
 
-        if ($@){
-                $self->log()->error("Failed to parse JSON response : $@");
-                return 0;
-        }
+	if ($@) {
+		$self->log()->error("Failed to parse JSON response : $@");
+		return 0;
+	}
 
-        return $json;
+	return $json;
 }
 
 =head2 $obj->parse_response_php(HTTP::Response)
@@ -371,44 +393,22 @@ Returns false, otherwise.
 =cut
 
 sub parse_response_php {
-        my $self = shift;
-        my $res = shift;
+	my $self = shift;
+	my $res  = shift;
 
-        my $php = undef;
+	my $php = undef;
 
-        eval {
-                require PHP::Serialization;
-                $php = PHP::Serialization::unserialize($res->content());
-        };
+	eval {
+		require PHP::Serialization;
+		$php = PHP::Serialization::unserialize( $res->content() );
+	};
 
-        if ($@){
-                $self->log()->error("Failed to parse PHP response : $@");
-                return 0;
-        }
+	if ($@) {
+		$self->log()->error("Failed to parse PHP response : $@");
+		return 0;
+	}
 
-        return $php;
-}
-
-=head2 $obj->divine_option($option, $default)
-
-Wrapper method check for configs that may be (re) set by a user.
-
-Returns a string.
-
-=cut
-
-sub divine_option {
-        my $self = shift;
-        my $opt = shift;
-        my $default = shift;
-
-        if (my $v = $self->cfg()->param($opt)){
-                $self->log()->debug("divine by config : $opt => $v");
-                return $v;
-        }
-
-        $self->log()->debug("divine by default : $opt => $default");
-        return $default;
+	return $php;
 }
 
 =head2 $obj->log()
@@ -418,19 +418,19 @@ Access to the object's internal I<Log::Dispatch> object.
 =cut
 
 sub log {
-        my $self = shift;
-        return $self->{'log'};
+	my $self = shift;
+	return $self->{'log'};
 }
 
 =head2 $obj->cfg()
 
-Access to the object's internal I<Config::Simple> object.
+Access to the object's Config.
 
 =cut
 
 sub cfg {
-        my $self = shift;
-        return $self->{'cfg'};
+	my $self = shift;
+	return $self->{'cfg'};
 }
 
 =head1 VERSION

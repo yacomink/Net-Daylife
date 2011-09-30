@@ -16,7 +16,6 @@ my %WriteMakefileArgs = (
 	'LICENSE'            => 'perl',
 	'NAME'               => 'Net::Daylife',
 	'PREREQ_PM'          => {
-		'Config::Simple' => '0',
 		'URI'            => '0',
 		'Digest::MD5'    => '0',
 		'LWP::UserAgent' => '0',
