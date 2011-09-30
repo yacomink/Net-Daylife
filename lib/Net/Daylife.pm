@@ -82,7 +82,7 @@ Why would you want to do this when you can just use JSON? That's your business, 
 
 The default is B<xml>
 
-=item *B <host>
+=item * B<host>
 
 String.
 
