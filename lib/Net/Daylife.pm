@@ -11,13 +11,9 @@ Net::Daylife - OOP for the Daylife.com API
 
 =head1 SYNOPSIS
 
- use Getopt::Std;
  use Net::Daylife;
 
- my %opts = ();
- getopts('c:', \%opts);
-
- my $day = Net::Daylife->new('config' => $opts{'c'});
+ my $day = Net::Daylife->new('config' => { access_key => 'd3b07384d113edec49eaa6238ad5ff00', shared_secret => 'c157a79031e1c40f85931829bc5fc552' });
 
  my $res = $day->api_call('search_getRelatedArticles', {'query' => 'flickr'});
 
@@ -43,10 +39,7 @@ at which point it will make more sense to check response codes automagically.
 
 =head1 OPTIONS
 
-Options are passed to Net::Daylife using a Config::Simple object or
-a valid Config::Simple config file. Options are grouped by "block".
-
-=head2 daypi
+Options are passed to Net::Daylife using a hashref containing the following:
 
 =over 4
 
@@ -132,7 +125,7 @@ my %name_params = ( "query" => 1, "name" => 1, "url" => 1, "content" => 1 );
 
 =cut
 
-=head2 __PACKAGE__->new(%options)
+=head2 __PACKAGE__->new( config => { access_key => 'd3b07384d113edec49eaa6238ad5ff00', shared_secret => 'c157a79031e1c40f85931829bc5fc552' } )
 
 I<Net::Daylife> subclasses I<LWP::UserAgent>. In addition its parent class' arguments
 you must include the following : 
@@ -141,8 +134,7 @@ you must include the following :
 
 =item * B<config>
 
-Either a valid I<Config::Simple> object or the path to a file that can be parsed by
-I<Config::Simple>.
+A hashref as described in the OPTIONS section of this documentation.
 
 =back
 
@@ -300,7 +292,7 @@ sub sign_args {
 			$to_encode = join( '', @$to_encode );
 		}
 
-		return md5_hex( $self->{'cfg'}->{access_key} . $self->{'cfg'}->{shared_secret} . $to_encode );
+		return Digest::MD5::md5_hex( $self->{'cfg'}->{access_key} . $self->{'cfg'}->{shared_secret} . $to_encode );
 	}
 
 }
